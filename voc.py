@@ -100,17 +100,29 @@ class GetBBoxAndLabel(object):
     return np.array(annotation)
   
   
-  from argmentations import Compose, ConvertFromInts, ToAbsoluteCoords, PhotometricDistort, Expand, RandomSampleCrop, RandomMirror, ToPercentCoodrs, Resize, SubtractMeans
+from augmentations import Compose, ConvertFromInts, ToAbsoluteCoords, PhotometricDistort, Expand, RandomSampleCrop, RandomMirror, ToPercentCoodrs, Resize, SubtractMeans
   
-  class DataTransform(object):
-    '''
-    イメージサイズを300x300にリサイズ
-    トレーニング時は拡張処理を行う
-    '''
-    def __init__(self, input_size, color_mean):
-      self.transform = {
-        'train': Compose([
-          ConvertFromInts(),
-          
-        ])
-      }
+class DataTransform(object):
+  '''
+  イメージサイズを300x300にリサイズ
+  トレーニング時は拡張処理を行う
+  '''
+  def __init__(self, input_size, color_mean):
+    self.transform = {
+      'train': Compose([
+        ConvertFromInts(),
+        ToAbsoluteCoords(),
+        PhotometricDistort(),
+        Expand(color_mean),
+        RandomSampleCrop(),
+        RandomMirror(),
+        ToPercentCoodrs(),
+        Resize(input_size),
+        SubtractMeans(color_mean)
+      ]),
+      'val': Compose([
+        ConvertFromInts(),
+        Resize(input_size),
+        SubtractMeans(color_mean)
+      ])
+    }
