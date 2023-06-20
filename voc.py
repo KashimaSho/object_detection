@@ -1,4 +1,4 @@
-# 1.訓練、検証のイメージとアノテーションのファイルパスのリストを作成する関数
+#訓練、検証のイメージとアノテーションのファイルパスのリストを作成する関数
 
 import os.path as osp
 from typing import Any
@@ -47,7 +47,7 @@ def make_filepath_list(rootpath):
 
 
 
-#2.BBoxの座標と正解ラベルをリスト化するクラス
+#BBoxの座標と正解ラベルをリスト化するクラス
 
 import xml.etree.ElementTree as ElementTree
 import numpy as np
@@ -100,7 +100,7 @@ class GetBBoxAndLabel(object):
     return np.array(annotation)
   
   
-from augmentations import Compose, ConvertFromInts, ToAbsoluteCoords, PhotometricDistort, Expand, RandomSampleCrop, RandomMirror, ToPercentCoodrs, Resize, SubtractMeans
+from augmentations import Compose, ConvertFromInts, ToAbsoluteCoords, PhotometricDistort, Expand, RandomSampleCrop, RandomMirror, ToPercentCoords, Resize, SubtractMeans
   
 class DataTransform(object):
   '''
@@ -116,7 +116,7 @@ class DataTransform(object):
         Expand(color_mean),
         RandomSampleCrop(),
         RandomMirror(),
-        ToPercentCoodrs(),
+        ToPercentCoords(),
         Resize(input_size),
         SubtractMeans(color_mean)
       ]),
@@ -126,3 +126,14 @@ class DataTransform(object):
         SubtractMeans(color_mean)
       ])
     }
+  
+  def __call__(self, img, phase, boxes, labels):
+    '''
+    データの前処理を実施
+    Params:
+      img(Image): イメージ
+      phase(str): 'train' or 'val'
+      boxes(Tensor): BBoxの座標(xmin, ymin, xmax, ymax)
+      labels(Tensor): 正解ラベルのインデックス
+    '''
+    return self.transform[phase](img, boxes, labels)
