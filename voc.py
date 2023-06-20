@@ -98,3 +98,19 @@ class GetBBoxAndLabel(object):
       
       annotation += [bndbox]
     return np.array(annotation)
+  
+  
+  from argmentations import Compose, ConvertFromInts, ToAbsoluteCoords, PhotometricDistort, Expand, RandomSampleCrop, RandomMirror, ToPercentCoodrs, Resize, SubtractMeans
+  
+  class DataTransform(object):
+    '''
+    イメージサイズを300x300にリサイズ
+    トレーニング時は拡張処理を行う
+    '''
+    def __init__(self, input_size, color_mean):
+      self.transform = {
+        'train': Compose([
+          ConvertFromInts(),
+          
+        ])
+      }

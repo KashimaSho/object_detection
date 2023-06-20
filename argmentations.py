@@ -258,3 +258,95 @@ class SubtractMeans(object):
         image = image.astype(np.float32)
         image -= self.mean
         return image.astype(np.float32), boxes, labels
+
+
+'''
+2セットのBBoxのIoUを計算する
+Args:
+    box_a: Multiple BBox, Shape: [num_boxes, 4]
+    box_b: Single BBox, Shape: [4]
+Return:
+    jaccard overlap: Shape: [box_a.shape[0], box_a.shape[1]]
+'''
+def intersect(box_a, box_b):
+    max_xy = np.minimum(box_a[:, 2:], box_b[2:])
+    min_xy = np.maximum(box_a[:, :2], box_b[:2])
+    inter = np.clip((max_xy - min_xy), a_min=0, a_max=np.inf)
+    return inter[:, 0] * inter[:, 1]
+
+def jaccard_numpy(box_a, box_b):
+    inter = intersect(box_a, box_b)
+    area_a = ((box_a[:, 2] - box_a[:, 0]) * (box_a[:, 3] - box_a[:, 1]))
+    area_b = ((box_b[2] - box_b[0]) * (box_b[3] - box_b[1]))
+    union = area_a + area_b - inter
+    return inter / union
+
+class RandomSampleCrop(object):
+    '''
+    イメージの特定の領域をランダムに切り出すクラス
+    Args:
+        img(Image): トレーニング中に入力されるイメージ
+        boxes(Tensor): オリジナルのBBox
+        labels(Tensor): BBoxのラベル
+        mode(float tuple): IoU
+    Return:
+        (img, boxes, labels)
+    '''
+    def __init__(self):
+        self.sample_options = (
+            None,
+            (0.1, None),
+            (0.3, None),
+            (0.7, None),
+            (0.9, None),
+            (None, None),
+        )
+        
+        self.sample_options = np.array(self.sample_options, dtype=object)
+    
+    def __call__(self, image, boxes=None, labels=None):
+        height, width, _ = image.shape
+        while True:
+            mode = random.choice(self.sample_options)
+            if mode is None:
+                return image, boxes, labels
+
+            min_iou, max_iou = mode
+            if min_iou is None:
+                min_iou = float('-inf')
+            if max_iou is None:
+                max_iou =float('inf')
+            
+            for _ in range(50):
+                current_image = image
+                w = random.uniform(0.3*width, width)
+                h = random.uniform(0.3*height, height)
+                if h/w<0.5 or h/w>2:
+                    continue
+                
+                left = random.uniform(width - w)
+                top = random.uniform(height - h)
+                
+                rect = np.array([int(left), int(top), int(left+w), int(top+h)])
+                overlap = jaccard_numpy(boxes, rect)
+                
+                if overlap.min() < min_iou and max_iou < overlap.max():
+                    continue
+                
+                current_image = current_image[rect[1]:rect[3], rect[0]:rect[2], :]
+                centers = (boxes[:, :2] + boxes[:, 2:]) / 2.0
+                m1 = (rect[0]<centers[:, 0]) * (rect[1]<centers[:, 1])
+                m2 = (rect[2]>centers[:, 0]) * (rect[3]>centers[:, 1])
+                mask = m1 * m2
+                
+                if not mask.any():
+                    continue
+                
+                current_boxes = boxes[mask, :].copy()
+                current_labels = labels[mask]
+                current_boxes[:, :2] = np.maximum(current_boxes[:, :2], rect[:2])
+                current_boxes[:, :2] -= rect[:2]
+                current_boxes[:, 2:] = np.minimum(current_boxes[:, 2:], rect[2:])
+                current_boxes[:, 2:] -= rect[:2]
+                
+                return current_image, current_boxes, current_labels
