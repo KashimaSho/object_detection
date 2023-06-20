@@ -33,8 +33,8 @@ class ToAbsoluteCoords(object):
     def __call__(self, image, boxes=None, labels=None):
         height, width, channels = image.shape
         boxes[:, 0] *= width
-        boxes[:, 1] *= height
         boxes[:, 2] *= width
+        boxes[:, 1] *= height
         boxes[:, 3] *= height
         return image, boxes, labels
 
@@ -75,16 +75,16 @@ class RandomContrast(object):
 class ConvertColor(object):
     '''
     変換処理その5
-    RGBとHSVを相互変換するクラス
+    BGRとHSVを相互変換するクラス
     '''
     def __init__(self, current='BGR', transform='HSV'):
         self.transform = transform
         self.current = current
     
     def __call__(self, image, boxes=None, labels=None):
-        if self.current=='BGR' and self.transform=='HSV':
+        if self.current == 'BGR' and self.transform == 'HSV':
             image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        elif self.current=='HSV' and self.transform=='BGR':
+        elif self.current == 'HSV' and self.transform == 'BGR':
             image = cv2.cvtColor(image, cv2.COLOR_HSV2BGR)
         else:
             raise NotImplementedError
@@ -131,7 +131,7 @@ class RandomLightingNoise(object):
     def __init__(self):
         self.perms = ((0, 1, 2), (0, 2, 1),
                       (1, 0, 2), (1, 2, 0),
-                      (2, 0, 1), (2, 1, 1))
+                      (2, 0, 1), (2, 1, 0))
     
     def __call__(self, image, boxes=None, labels=None):
         if random.randint(2):
@@ -163,7 +163,7 @@ class PhotometricDistort(object):
     def __init__(self):
         self.pd = [
             RandomContrast(),
-            ConvertColor(current='BGR', transform='HSV'),
+            ConvertColor(transform='HSV'),
             RandomSaturation(),
             RandomHue(),
             ConvertColor(current='HSV', transform='BGR'),
@@ -205,12 +205,13 @@ class Expand(object):
         #create canvas
         expand_image = np.zeros(
             (int(height*ratio), int(width*ratio), depth),
-            dtype=image.dtype
-        )
+            dtype=image.dtype)
         #fill with mean of image
         expand_image[:, :, :] = self.mean
         #put image at left-top
-        expand_image[int(top):int(top+height), int(left):int(left+width)] = image
+        expand_image[int(top):int(top + height), 
+                     int(left):int(left + width)] = image
+        image = expand_image
 
         boxes = boxes.copy()
         boxes[:, :2] += (int(left), int(top)) #xmin, ymin
@@ -230,15 +231,15 @@ class RandomMirror(object):
             boxes[:, 0::2] = width - boxes[:, 2::-2]
         return image, boxes, classes
 
-class ToPercentCoodrs(object):
+class ToPercentCoords(object):
     '''
     アノテーションデータを正規化するクラス
     '''
     def __call__(self, image, boxes=None, labels=None):
         height, width, channels = image.shape
         boxes[:, 0] /= width
-        boxes[:, 1] /= height
         boxes[:, 2] /= width
+        boxes[:, 1] /= height
         boxes[:, 3] /= height
         return image, boxes, labels
 
@@ -247,7 +248,8 @@ class Resize(object):
         self.size = size
     
     def __call__(self, image, boxes=None, labels=None):
-        image = cv2.resize(image, (self.size, self.size))
+        image = cv2.resize(image,
+                           (self.size, self.size))
         return image, boxes, labels
 
 class SubtractMeans(object):
@@ -276,8 +278,10 @@ def intersect(box_a, box_b):
 
 def jaccard_numpy(box_a, box_b):
     inter = intersect(box_a, box_b)
-    area_a = ((box_a[:, 2] - box_a[:, 0]) * (box_a[:, 3] - box_a[:, 1]))
-    area_b = ((box_b[2] - box_b[0]) * (box_b[3] - box_b[1]))
+    area_a = ((box_a[:, 2] - box_a[:, 0]) *
+              (box_a[:, 3] - box_a[:, 1]))
+    area_b = ((box_b[2] - box_b[0]) *
+              (box_b[3] - box_b[1]))
     union = area_a + area_b - inter
     return inter / union
 
@@ -319,9 +323,9 @@ class RandomSampleCrop(object):
             
             for _ in range(50):
                 current_image = image
-                w = random.uniform(0.3*width, width)
-                h = random.uniform(0.3*height, height)
-                if h/w<0.5 or h/w>2:
+                w = random.uniform(0.3 * width, width)
+                h = random.uniform(0.3 * height, height)
+                if h / w < 0.5 or h / w > 2:
                     continue
                 
                 left = random.uniform(width - w)
@@ -333,10 +337,11 @@ class RandomSampleCrop(object):
                 if overlap.min() < min_iou and max_iou < overlap.max():
                     continue
                 
-                current_image = current_image[rect[1]:rect[3], rect[0]:rect[2], :]
+                current_image = current_image[rect[1]:rect[3], rect[0]:rect[2], 
+                                              :]
                 centers = (boxes[:, :2] + boxes[:, 2:]) / 2.0
-                m1 = (rect[0]<centers[:, 0]) * (rect[1]<centers[:, 1])
-                m2 = (rect[2]>centers[:, 0]) * (rect[3]>centers[:, 1])
+                m1 = (rect[0] < centers[:, 0]) * (rect[1] < centers[:, 1])
+                m2 = (rect[2] > centers[:, 0]) * (rect[3] > centers[:, 1])
                 mask = m1 * m2
                 
                 if not mask.any():
