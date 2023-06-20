@@ -15,7 +15,7 @@ class Compose(object):
     def __call__(self, img, boxes=None, labels=None):
         for t in self.transforms:
             img, boxes, labels = t(img, boxes, labels)
-            return img, boxes, labels
+        return img, boxes, labels
 
 class ConvertFromInts(object):
     '''
@@ -113,7 +113,7 @@ class RandomHue(object):
     色相をランダムに変化させるクラス
     '''
     def __init__(self, delta=18.0):
-        assert delta>=0.0 and delta<=360.0
+        assert delta >= 0.0 and delta <= 360.0
         self.delta = delta
     
     def __call__(self, image, boxes=None, labels=None):
@@ -200,8 +200,8 @@ class Expand(object):
         
         height, width, depth = image.shape
         ratio = random.uniform(1, 4)
-        left = random.uniform(0, width*ratio-width)
-        top = random.uniform(0, height*ratio-height)
+        left = random.uniform(0, width*ratio - width)
+        top = random.uniform(0, height*ratio - height)
         #create canvas
         expand_image = np.zeros(
             (int(height*ratio), int(width*ratio), depth),
