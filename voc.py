@@ -2,6 +2,8 @@
 
 import os.path as osp
 from typing import Any
+import torch
+import torch.utils.data as data
 
 def make_filepath_list(rootpath):
   
@@ -9,7 +11,7 @@ def make_filepath_list(rootpath):
   データのパスを格納したリストを作成
   Parameters: 
     rootpath(str): データフォルダのルートパス
-  Returns:
+  Return:
     train_img_list: 訓練用イメージリスト
     train_anno_list: 訓練用アノテーションリスト
     val_img_list: 検証用イメージリスト
@@ -68,7 +70,7 @@ class GetBBoxAndLabel(object):
       xml_path(str): xmlファイルのパス
       width(int): イメージの幅
       height(int): イメージの高さ
-    Returns(ndarray):
+    Return(ndarray):
       [[xmin, ymin, xmax, ymax, label_idx], ...]
     '''
     annotation = []
@@ -130,10 +132,30 @@ class DataTransform(object):
   def __call__(self, img, phase, boxes, labels):
     '''
     データの前処理を実施
-    Params:
+    Parameters:
       img(Image): イメージ
       phase(str): 'train' or 'val'
       boxes(Tensor): BBoxの座標(xmin, ymin, xmax, ymax)
       labels(Tensor): 正解ラベルのインデックス
     '''
     return self.transform[phase](img, boxes, labels)
+
+def multiobject_collate_fn(batch):
+  '''
+  ミニバッチを作る関数
+  Parameters: 
+    batch(tuple): PreprocessVOC2012の__getitem__()で取得する要素2のタプル(processed image, bboxes and labels)
+  Return:
+    imgs(Tensor): 前処理後のイメージをミニバッチの数だけ格納した4階テンソル
+    targets(list): [[xmin, ymin, xmax, ymax, label], ...]の2階テンソル([物体数, 5])
+  '''
+  imgs = []
+  targets = []
+  
+  for sample in batch:
+    imgs.append(sample[0])
+    targets.append(torch.FloatTensor(sample[1]))
+  
+  imgs = torch.stack(imgs, dim=0)
+  return imgs, targets
+  
