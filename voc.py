@@ -9,7 +9,7 @@ def make_filepath_list(rootpath):
   
   '''
   データのパスを格納したリストを作成
-  Parameters: 
+  Parameter: 
     rootpath(str): データフォルダのルートパス
   Return:
     train_img_list: 訓練用イメージリスト
@@ -66,7 +66,7 @@ class GetBBoxAndLabel(object):
   
   def __call__(self, xml_path, width, height):
     '''
-    Parameters:
+    Parameter:
       xml_path(str): xmlファイルのパス
       width(int): イメージの幅
       height(int): イメージの高さ
@@ -132,7 +132,7 @@ class DataTransform(object):
   def __call__(self, img, phase, boxes, labels):
     '''
     データの前処理を実施
-    Parameters:
+    Parameter:
       img(Image): イメージ
       phase(str): 'train' or 'val'
       boxes(Tensor): BBoxの座標(xmin, ymin, xmax, ymax)
@@ -143,7 +143,7 @@ class DataTransform(object):
 def multiobject_collate_fn(batch):
   '''
   ミニバッチを作る関数
-  Parameters: 
+  Parameter: 
     batch(tuple): PreprocessVOC2012の__getitem__()で取得する要素2のタプル(processed image, bboxes and labels)
   Return:
     imgs(Tensor): 前処理後のイメージをミニバッチの数だけ格納した4階テンソル
