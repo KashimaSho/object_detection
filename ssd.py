@@ -1,6 +1,8 @@
 import torch
 import torch.nn.init as init
 import torch.nn as nn
+from itertools import product as product
+from math import sqrt as sqrt
 
 def make_vgg():
   '''
@@ -173,3 +175,61 @@ class L2Norm(nn.Module):
     out = weights * x
     
     return out
+  
+  
+class DBox(object):
+  '''
+  8732個のDBoxの(x, y, width, height)を生成するクラス
+  Attribute:
+    image_size(Int): イメージサイズ
+    feature_maps(list): out1~out6の特徴量マップリスト [38, 19, 10, 5, 3, 1]
+    num_priors(Int): feature_mapsの要素数 6
+    steps(list): DBoxのサイズのリスト 
+    min_sizes(list): 小さい正方形のDBoxのサイズ
+    max_sizes(list): 大きい正方形のDBoxのサイズ
+    aspect_ratios(list): 長方形のDBoxのアスペクト比
+  '''
+  
+  def __init__(self, cfg):
+    super(DBox, self).__init__()
+    
+    self.image_size = cfg['input_size']
+    self.feature_maps = cfg['feature_maps']
+    self.num_priors = len(cfg['feature_maps'])
+    self.steps = cfg['steps']
+    self.min_sizes = cfg['min_sizes']
+    self.max_sizes = cfg['max_sizes']
+    self.aspect_ratios = cfg['aspect_ratios']
+  
+  def make_dbox_list(self):
+    '''
+    Return:
+      (Tensor)DBoxの[cx, cy, width, height]を格納した(8732, 4)のテンソル
+    '''
+    mean = []
+    #feature_maps = [38, 19, 10, 5, 3, 1]
+    for k, f in enumerate(self.feature_maps):
+      #(i,j)はf=38の場合, (0,0), (0,1), ..., (0,37)~(37,0), (37,1), ..., (37,37)
+      for i, j in product(range(f), repeat=2):
+        f_k = self.image_size / self.steps[k]
+        cx = (j + 0.5) / f_k
+        cy = (i + 0.5) / f_k
+        
+        #min_sizes = [30, 60, 111, 162, 213, 264] / 300
+        s_k = self.min_sizes[k] / self.image_size
+        mean += [cx, cy, s_k, s_k]
+        
+        #max_sizes = [45, 99, 153, 207, 261, 315] / 300
+        s_k_prime = sqrt(s_k * (self.max_sizes[k]/self.image_size))
+        mean += [cx, cy, s_k_prime, s_k_prime]
+        
+        for ar in self.aspect_ratios[k]:
+          mean += [cx, cy, s_k*sqrt(ar), s_k/sqrt(ar)]
+          mean += [cx, cy, s_k/sqrt(ar), s_k*sqrt(ar)]
+        
+    output = torch.Tensor(mean).view(-1, 4)
+    output.clamp_(max=1, min=0)
+    
+    return output
+          
+    
