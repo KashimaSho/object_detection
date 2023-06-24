@@ -82,7 +82,7 @@ def make_extras():
 def make_loc(dbox_num=[4, 6, 6, 6, 4, 4]):
   '''
   Prameter:
-    dbox_num(Int list): out1~out6それぞれに用意されるデフォルトボックスの数
+    dbox_num(int list): out1~out6それぞれに用意されるデフォルトボックスの数
   Return:
     (nn.ModuleList): loc module list
   '''
@@ -107,8 +107,8 @@ def make_loc(dbox_num=[4, 6, 6, 6, 4, 4]):
 def make_conf(class_num=21, dbox_num=[4, 6, 6, 6, 4, 4]):
   '''
   Prameter:
-    dbox_num(Int list): out1~out6それぞれに用意されるデフォルトボックスの数
-    class_num(Int): クラス数
+    dbox_num(int list): out1~out6それぞれに用意されるデフォルトボックスの数
+    class_num(int): クラス数
   Return:
     (nn.ModuleList): conf module list
   '''
@@ -142,8 +142,8 @@ class L2Norm(nn.Module):
   def __init__(self, input_channels=512, scale=20):
     '''
     Parameter:
-      input_channels(Int): num of input channels = num of output channels at vgg4
-      scale(Int): initial value of weight
+      input_channels(int): num of input channels = num of output channels at vgg4
+      scale(int): initial value of weight
     '''
     
     super(L2Norm, self).__init__() #親のnn.Moduleのコンストラクタ__init__()を実行
@@ -181,9 +181,9 @@ class DBox(object):
   '''
   8732個のDBoxの(x, y, width, height)を生成するクラス
   Attribute:
-    image_size(Int): イメージサイズ
+    image_size(int): イメージサイズ
     feature_maps(list): out1~out6の特徴量マップリスト [38, 19, 10, 5, 3, 1]
-    num_priors(Int): feature_mapsの要素数 6
+    num_priors(int): feature_mapsの要素数 6
     steps(list): DBoxのサイズのリスト 
     min_sizes(list): 小さい正方形のDBoxのサイズ
     max_sizes(list): 大きい正方形のDBoxのサイズ
@@ -231,5 +231,112 @@ class DBox(object):
     output.clamp_(max=1, min=0)
     
     return output
+  
+  
+def decode(loc, dbox_list):
+  '''
+  Decode default box to bounding box
+  
+  Parameter:
+    loc(Tensor): (8732, 4) output of loc which means offset of DBox (Δcx, Δcy, Δwidth, Δheight)
+    dbox_list(Tensor): (8732, 4) tensor of DBox (cx_d, cy_d, width_d, height_d)
+  Return:
+    boxes(Tensor): (8732, 4) tensor of BBox(xmin, ymin, xmax, ymax)
+  '''
+  
+  boxes = torch.cat((
+    # cx = cx_d + 0.1 * Δcx * w_d
+    # cy = cy_d + 0.1 * Δcy * h_d
+    dbox_list[:, :2] + loc[:, :2] * 0.1 * dbox_list[:, 2:],
+    # w = width_d * exp(0.2 * Δwidth)
+    # h = height_d * exp(0.2 * Δheight)
+    dbox_list[:, 2:] * torch.exp(loc[:, 2:] * 0.2)
+  ), dim=1)
+  
+  boxes[:, :2] -= boxes[:, 2:] / 2 # Add width and height to center coordinates in order to convert xmin and ymin
+  boxes[:, 2:] += boxes[:, :2] # Add xmin and ymin to width and height in order to convert xmax and ymax
+  
+  return boxes
+  
+
+def nonmaximum_suppress(boxes, scores, overlap=0.5, top_k=200):
+  '''
+  1つの物体に対して1つのBBoxだけ残す
+  21クラスすべてにこの処理を施す
+  確信度scoresとIoUを利用してそれぞれの物体のBBoxを1つだけ決める
+  
+  Parameter:
+    boxes(Tensor): tensor of BBox (confident score > 0.01)
+    scores(Tensor): confident score ( > 0.01) from "conf"
+    overlap(float): the threshold of IoU to determine which are same objects
+    top_k(int): num of extracting sample (confident score > 0.01)
+  Return:
+    keep(Tensor): index of BBox
+    count(int): num of BBox
+  '''
+  
+  # initialization
+  count = 0
+  keep = scores.new(scores.size(0)).zero_().long()
+  
+  # caluculate area of BBox
+  x1 = boxes[:, 0]
+  y1 = boxes[:, 1]
+  x2 = boxes[:, 2]
+  y2 = boxes[:, 3]
+  area = torch.mul(x2-x1, y2-y1)
+  
+  #make empty tensors
+  tmp_x1 = boxes.new()
+  tmp_y1 = boxes.new()
+  tmp_x2 = boxes.new()
+  tmp_y2 = boxes.new()
+  tmp_w = boxes.new()
+  tmp_h = boxes.new()
+  
+  # extract top_k num boxes (confident score > 0.01)
+  v, idx = scores.sort(0)
+  idx = idx[-top_k:]
+  
+  while idx.numel() > 0: # numel()は要素数, dim()は次元数, size()は形状
+    i = idx[-1]
+    keep[count] = i
+    count += 1
+    
+    # break if it is last BBox
+    if idx.size(0) == 1:
+      break
+    
+    # index_select(input_tensor, dim, index_element, output_tensor)
+    idx = idx[:-1]
+    torch.index_select(x1, 0, idx, out=tmp_x1)
+    torch.index_select(y1, 0, idx, out=tmp_y1)
+    torch.index_select(x2, 0, idx, out=tmp_x2)
+    torch.index_select(y2, 0, idx, out=tmp_y2)
+    
+    tmp_x1 = torch.clamp(tmp_x1, min=x1[i])
+    tmp_y1 = torch.clamp(tmp_y1, min=y1[i])
+    tmp_x2 = torch.clamp(tmp_x2, min=x2[i])
+    tmp_y2 = torch.clamp(tmp_y2, min=y2[i])
+    
+    tmp_w.resize_as_(tmp_x2)
+    tmp_h.resize_as_(tmp_y2)
+    tmp_w = tmp_x2 - tmp_x1
+    tmp_h = tmp_y2 - tmp_y1
+    
+    # calculate IoU
+    inter = tmp_w * tmp_h
+    rem_areas = torch.index_select(area, 0, idx)
+    union = (rem_areas - inter) + area[i]
+    IoU = inter / union
+    
+    # remove BBox (IoU < overlap)
+    idx = idx[IoU.le(overlap)]
+    
+  return keep, count
+    
+    
+  
+    
           
     

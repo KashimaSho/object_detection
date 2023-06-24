@@ -11,7 +11,7 @@ class PreprocessVOC2012(data.Dataset):
   Return:
     preprocessed image(RGB Tensor)
     BBox and label(ndarray)
-    width and height of image(Int)
+    width and height of image(int)
   '''
   def __init__(self, img_list, anno_list, phase, transform, get_bbox_label):
     self.img_list = img_list
@@ -32,7 +32,7 @@ class PreprocessVOC2012(data.Dataset):
     前処理後のイメージとBBox座標とラベルの2次元配列を取得
     pytorchのdataloaderでは必ず実装が必要
     Parameter:
-      index(Int): 訓練または検証用イメージのインデックス
+      index(int): 訓練または検証用イメージのインデックス
     Return:
       im(Tensor): 前処理後のイメージを格納したテンソル(3, 高さのピクセル数, 幅のピクセル数)
       bl(ndarray): BBoxとラベルの2次元配列
@@ -44,12 +44,12 @@ class PreprocessVOC2012(data.Dataset):
   def pull_item(self, index):
     '''
     Parameter:
-      index(Int): 訓練または検証用イメージのインデックス
+      index(int): 訓練または検証用イメージのインデックス
     Return:
       im(Tensor): 前処理後のイメージを格納したテンソル(3, 高さのピクセル数, 幅のピクセル数)
       bl(ndarray): BBoxとラベルの2次元配列
-      height(Int): イメージの高さ
-      width(Int): イメージの幅
+      height(int): イメージの高さ
+      width(int): イメージの幅
     '''
     img_path = self.img_list[index]
     img = cv2.imread(img_path)
