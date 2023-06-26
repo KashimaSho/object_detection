@@ -3,6 +3,8 @@ import torch.nn.init as init
 import torch.nn as nn
 from itertools import product as product
 from math import sqrt as sqrt
+from torch.autograd import Function
+import torch.nn.functional as F
 
 def make_vgg():
   '''
@@ -82,7 +84,7 @@ def make_extras():
 def make_loc(dbox_num=[4, 6, 6, 6, 4, 4]):
   '''
   Prameter:
-    dbox_num(Int list): out1~out6それぞれに用意されるデフォルトボックスの数
+    dbox_num(int list): out1~out6それぞれに用意されるデフォルトボックスの数
   Return:
     (nn.ModuleList): loc module list
   '''
@@ -107,8 +109,8 @@ def make_loc(dbox_num=[4, 6, 6, 6, 4, 4]):
 def make_conf(class_num=21, dbox_num=[4, 6, 6, 6, 4, 4]):
   '''
   Prameter:
-    dbox_num(Int list): out1~out6それぞれに用意されるデフォルトボックスの数
-    class_num(Int): クラス数
+    dbox_num(int list): out1~out6それぞれに用意されるデフォルトボックスの数
+    class_num(int): クラス数
   Return:
     (nn.ModuleList): conf module list
   '''
@@ -142,8 +144,8 @@ class L2Norm(nn.Module):
   def __init__(self, input_channels=512, scale=20):
     '''
     Parameter:
-      input_channels(Int): num of input channels = num of output channels at vgg4
-      scale(Int): initial value of weight
+      input_channels(int): num of input channels = num of output channels at vgg4
+      scale(int): initial value of weight
     '''
     
     super(L2Norm, self).__init__() #親のnn.Moduleのコンストラクタ__init__()を実行
@@ -181,9 +183,9 @@ class DBox(object):
   '''
   8732個のDBoxの(x, y, width, height)を生成するクラス
   Attribute:
-    image_size(Int): イメージサイズ
+    image_size(int): イメージサイズ
     feature_maps(list): out1~out6の特徴量マップリスト [38, 19, 10, 5, 3, 1]
-    num_priors(Int): feature_mapsの要素数 6
+    num_priors(int): feature_mapsの要素数 6
     steps(list): DBoxのサイズのリスト 
     min_sizes(list): 小さい正方形のDBoxのサイズ
     max_sizes(list): 大きい正方形のDBoxのサイズ
@@ -231,5 +233,266 @@ class DBox(object):
     output.clamp_(max=1, min=0)
     
     return output
+  
+  
+def decode(loc, dbox_list):
+  '''
+  Decode default box to bounding box
+  
+  Parameter:
+    loc(Tensor): (8732, 4) output of loc which means offset of DBox (Δcx, Δcy, Δwidth, Δheight)
+    dbox_list(Tensor): (8732, 4) tensor of DBox (cx_d, cy_d, width_d, height_d)
+  Return:
+    boxes(Tensor): (8732, 4) tensor of BBox(xmin, ymin, xmax, ymax)
+  '''
+  
+  boxes = torch.cat((
+    # cx = cx_d + 0.1 * Δcx * w_d
+    # cy = cy_d + 0.1 * Δcy * h_d
+    dbox_list[:, :2] + loc[:, :2] * 0.1 * dbox_list[:, 2:],
+    # w = width_d * exp(0.2 * Δwidth)
+    # h = height_d * exp(0.2 * Δheight)
+    dbox_list[:, 2:] * torch.exp(loc[:, 2:] * 0.2)
+  ), dim=1)
+  
+  boxes[:, :2] -= boxes[:, 2:] / 2 # Add width and height to center coordinates in order to convert xmin and ymin
+  boxes[:, 2:] += boxes[:, :2] # Add xmin and ymin to width and height in order to convert xmax and ymax
+  
+  return boxes
+  
+
+def nonmaximum_suppress(boxes, scores, overlap=0.5, top_k=200):
+  '''
+  1つの物体に対して1つのBBoxだけ残す
+  21クラスすべてにこの処理を施す
+  確信度scoresとIoUを利用してそれぞれの物体のBBoxを1つだけ決める
+  
+  Parameter:
+    boxes(Tensor): tensor of BBox (confident score > 0.01)
+    scores(Tensor): confident score ( > 0.01) from "conf"
+    overlap(float): the threshold of IoU to determine which are same objects
+    top_k(int): num of extracting sample (confident score > 0.01)
+  Return:
+    keep(Tensor): index of BBox
+    count(int): num of BBox
+  '''
+  
+  # initialization
+  count = 0
+  keep = scores.new(scores.size(0)).zero_().long()
+  
+  # caluculate area of BBox
+  x1 = boxes[:, 0]
+  y1 = boxes[:, 1]
+  x2 = boxes[:, 2]
+  y2 = boxes[:, 3]
+  area = torch.mul(x2-x1, y2-y1)
+  
+  #make empty tensors
+  tmp_x1 = boxes.new()
+  tmp_y1 = boxes.new()
+  tmp_x2 = boxes.new()
+  tmp_y2 = boxes.new()
+  tmp_w = boxes.new()
+  tmp_h = boxes.new()
+  
+  # extract top_k num boxes (confident score > 0.01)
+  v, idx = scores.sort(0)
+  idx = idx[-top_k:]
+  
+  while idx.numel() > 0: # numel()は要素数, dim()は次元数, size()は形状
+    i = idx[-1]
+    keep[count] = i
+    count += 1
+    
+    # break if it is last BBox
+    if idx.size(0) == 1:
+      break
+    
+    # index_select(input_tensor, dim, index_element, output_tensor)
+    idx = idx[:-1]
+    torch.index_select(x1, 0, idx, out=tmp_x1)
+    torch.index_select(y1, 0, idx, out=tmp_y1)
+    torch.index_select(x2, 0, idx, out=tmp_x2)
+    torch.index_select(y2, 0, idx, out=tmp_y2)
+    
+    tmp_x1 = torch.clamp(tmp_x1, min=x1[i])
+    tmp_y1 = torch.clamp(tmp_y1, min=y1[i])
+    tmp_x2 = torch.clamp(tmp_x2, min=x2[i])
+    tmp_y2 = torch.clamp(tmp_y2, min=y2[i])
+    
+    tmp_w.resize_as_(tmp_x2)
+    tmp_h.resize_as_(tmp_y2)
+    tmp_w = tmp_x2 - tmp_x1
+    tmp_h = tmp_y2 - tmp_y1
+    
+    # calculate IoU
+    inter = tmp_w * tmp_h
+    rem_areas = torch.index_select(area, 0, idx)
+    union = (rem_areas - inter) + area[i]
+    IoU = inter / union
+    
+    # remove BBox (IoU < overlap)
+    idx = idx[IoU.le(overlap)]
+    
+  return keep, count
+    
+
+class Detect(Function):
+  '''
+  推論時のforward処理を実装
+  Attribute:
+    softmax: torch.nn.Softmax
+    conf_thresh: threshold to extract BBox
+    top_k: num of BBox by NMS
+    nms_thresh: threshold of IoU
+  '''
+  
+  @staticmethod
+  def forward(ctx, loc_data, conf_data, dbox_list):
+    '''
+    Parameter:
+      loc_data(Tensor): output from loc network
+      conf_data(Tensor): output from conf network
+      dbox_list(Tensor): information of dboxes
+    Return:
+      output(Tensor): (batch_num, 21, 200, 5) which means (batch_data_idx, class_idx, BBox_idx, [conf, xmin, ymin, xmax, ymax])
+    '''
+    ctx.softmax = nn.Softmax(dim=-1)
+    ctx.conf_thresh = 0.01
+    ctx.top_k = 200
+    ctx.nms_thresh = 0.45
+    
+    batch_num = loc_data.size(0)
+    classes_num = conf_data.size(2)
+    conf_data = ctx.softmax(conf_data)
+    conf_preds = conf_data.transpose(2, 1)
+    output = torch.zeros(batch_num, classes_num, ctx.top_k, 5)
+    
+    for i in range(batch_num):
+      decoded_boxes = decode(loc_data[i], dbox_list)
+      conf_scores = conf_preds[i].clone()
+      
+      for cl in range(1, classes_num):
+        #conf_thresholdを超えていればTrue, そうでなければFalse
+        c_mask = conf_scores[cl].gt(ctx.conf_thresh)
+        scores = conf_scores[cl][c_mask]
+        if scores.nelement() == 0:
+          continue
+        
+        # c_maskの形状を(8732,)から(8732, 4)にする
+        l_mask = c_mask.unsqueeze(1).expand_as(decoded_boxes)
+        boxes = decoded_boxes[l_mask].view(-1, 4)
+        
+        ids, count = nonmaximum_suppress(boxes, scores, ctx.nms_thresh, ctx.top_k)
+        output[i, cl, :count] = torch.cat(
+          (scores[ids[:count]].unsqueeze(1), boxes[ids[:count]]),
+          dim=1
+        )
+    return output
+    
+    
+class SSD(nn.Module):
+    '''
+    SSDモデルを生成
+    Attribute:
+      phase(str): train or test
+      classes_num(int): class num
+      vgg(object): vgg network
+      extras(object): extras network
+      L2Norm(object): L2norm layer
+      loc(object): loc network
+      conf(object): conf network
+      dbox_list(Tensor): DBox[cx, cy, width, height]
+      detect(object): objects to execute forward() in Detect class
+    '''
+    
+    def __init__(self, phase, cfg):
+      super(SSD, self).__init__()
+      
+      self.phase = phase
+      self.classes_num = cfg['classes_num']
+      self.vgg = make_vgg()
+      self.extras = make_extras()
+      self.L2Norm = L2Norm()
+      self.loc = make_loc(cfg['dbox_num'])
+      self.conf = make_conf(cfg['classes_num'], cfg['dbox_num'])
+      
+      dbox = DBox(cfg=cfg)
+      self.dbox_list = dbox.make_dbox_list()
+      
+      if phase == 'test':
+        self.detect = Detect.apply
+    
+    def forward(self, x):
+      '''
+      Parameter:
+        x(Tensor): (batch_size, 3, 300, 300)
+      Return:
+        if phase == 'test':
+          1枚の画像に対するBBoxの情報を格納(batch_size, 21, 200, 5) 
+        elif phase == 'train':
+          (loc, conf, dbox_list)を格納したタプル
+          loc(batch_size, 8732, 4)
+          conf(batch_size, 8732, 21)
+          dbox_list(8732, 4)
+      '''
+      out_list = list()
+      loc = list()
+      conf = list()
+      
+      # get out1
+      # from vgg1 to vgg4
+      for k in range(23):
+        x = self.vgg[k](x)
+      out1 = self.L2Norm(x)
+      out_list.append(out1)
+      
+      # get out2
+      # from vgg4 to vgg6
+      for k in range(23, len(self.vgg)):
+        x = self.vgg[k](x)
+      out_list.append(x)
+      
+      # get out3 ~ out6
+      #from extras1 to extras4
+      for k,v in enumerate(self.extras):
+        x = F.relu(v(x), inplace=True)
+        # each extras has 2 layers
+        # add to out_list after every odd layer
+        if k%2 == 1:
+          out_list.append(x)
+      
+      for (x, l, c) in zip(out_list, self.loc, self.conf):
+        #loc networkにout1 ~ out6を入力
+        #形状を(batch_size, offset*DBox_num, height, width)から(batch_size, height, width, offset*DBox_num)に変換
+        #torch.contiguous()でメモリ上に要素を連続的に配置し直してview()関数を適用できるようにする
+        loc.append(l(x).permute(0, 2, 3, 1).contiguous())
+        
+        #conf networkにout1 ~ out6を入力
+        #形状を(batch_size, classes_num*DBox_num, height, width)から(batch_size, height, width, classes_num*DBox_num)に変換
+        #torch.contiguous()でメモリ上に要素を連続的に配置し直してview()関数を適用できるようにする
+        conf.append(c(x).permute(0, 2, 3, 1).contiguous())
+        
+      loc = torch.cat([o.view(o.size(0), -1) for o in loc], dim=1)
+      conf = torch.cat([o.view(o.size(0), -1) for o in conf], dim=1)
+      
+      loc = loc.view(loc.size(0), -1, 4)
+      conf = conf.view(conf.size(0), -1, self.classes_num)
+      output = (loc, conf, self.dbox_list)
+      
+      if self.phase == 'test':
+        return self.detect(output[0], output[1], output[2])
+      else:
+        return output
+        
+        
+        
+        
+        
+        
+        
+      
+      
           
     
