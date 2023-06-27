@@ -20,17 +20,6 @@ def intersect(box_a, box_b):
   Return:
     intersection of box_a and box_b
   '''
+  # get box num
   A = box_a.size(0)
   B = box_b.size(0)
-
-  max_xy = torch.min(
-    box_a[:, 2:].unsqueeze(1).expand(A, B, 2),
-    box_b[:, 2:].unsqueeze(0).expand(A, B, 2)
-  )
-
-  min_xy = torch.max(
-    box_a[:, :2].unsqueeze(1).expand(A, B, 2),
-    box_b[:, :2].unsqueeze(0).expand(A, B, 2)
-  )
-
-  inter = torch.clamp((max_xy - min_xy), min=0)
