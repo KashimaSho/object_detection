@@ -548,7 +548,7 @@ class MultiBoxLoss(nn.Module):
       loss_l = F.smooth_l1_loss(loc_p, loc_t, reduction='sum')
 
       batch_conf = conf_data.view(-1, num_classes)
-      loss_c = F.cross_entropy(batch_conf, conf_t_label, reduction='none')
+      loss_c = F.cross_entropy(batch_conf, conf_t_label.view(-1), reduction='none')
 
       num_pos = pos_mask.long().sum(1, keepdim=True)
       loss_c = loss_c.view(num_batch, -1)
