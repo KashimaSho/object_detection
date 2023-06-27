@@ -5,6 +5,7 @@ from itertools import product as product
 from math import sqrt as sqrt
 from torch.autograd import Function
 import torch.nn.functional as F
+from match import match
 
 def make_vgg():
   '''
@@ -487,7 +488,14 @@ class SSD(nn.Module):
         return output
         
         
-        
+class MultiBoxLoss(nn.Module):
+  '''
+  SSDの損失関数クラス
+  Attribute:
+    jaccard_thresh(float): 背景のDBoxに分類されるときの閾値(=0.5)
+    negpos_ratio(int): 背景のDBoxを絞り込むときの割合(Positive DBoxの3倍)
+    device(torch.device): 使用するデバイス(今回はGPU)
+  ''' 
         
         
         
