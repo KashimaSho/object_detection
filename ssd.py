@@ -388,7 +388,7 @@ class Detect(Function):
         ids, count = nonmaximum_suppress(boxes, scores, ctx.nms_thresh, ctx.top_k)
         output[i, cl, :count] = torch.cat(
           (scores[ids[:count]].unsqueeze(1), boxes[ids[:count]]),
-          dim=1
+          1
         )
     return output
     
@@ -475,8 +475,8 @@ class SSD(nn.Module):
         #torch.contiguous()でメモリ上に要素を連続的に配置し直してview()関数を適用できるようにする
         conf.append(c(x).permute(0, 2, 3, 1).contiguous())
         
-      loc = torch.cat([o.view(o.size(0), -1) for o in loc], dim=1)
-      conf = torch.cat([o.view(o.size(0), -1) for o in conf], dim=1)
+      loc = torch.cat([o.view(o.size(0), -1) for o in loc], 1)
+      conf = torch.cat([o.view(o.size(0), -1) for o in conf], 1)
       
       loc = loc.view(loc.size(0), -1, 4)
       conf = conf.view(conf.size(0), -1, self.classes_num)
