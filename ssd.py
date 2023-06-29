@@ -388,7 +388,7 @@ class Detect(Function):
         ids, count = nonmaximum_suppress(boxes, scores, ctx.nms_thresh, ctx.top_k)
         output[i, cl, :count] = torch.cat(
           (scores[ids[:count]].unsqueeze(1), boxes[ids[:count]]),
-          dim=1
+          1
         )
     return output
     
@@ -475,8 +475,8 @@ class SSD(nn.Module):
         #torch.contiguous()でメモリ上に要素を連続的に配置し直してview()関数を適用できるようにする
         conf.append(c(x).permute(0, 2, 3, 1).contiguous())
         
-      loc = torch.cat([o.view(o.size(0), -1) for o in loc], dim=1)
-      conf = torch.cat([o.view(o.size(0), -1) for o in conf], dim=1)
+      loc = torch.cat([o.view(o.size(0), -1) for o in loc], 1)
+      conf = torch.cat([o.view(o.size(0), -1) for o in conf], 1)
       
       loc = loc.view(loc.size(0), -1, 4)
       conf = conf.view(conf.size(0), -1, self.classes_num)
@@ -548,7 +548,7 @@ class MultiBoxLoss(nn.Module):
       loss_l = F.smooth_l1_loss(loc_p, loc_t, reduction='sum')
 
       batch_conf = conf_data.view(-1, num_classes)
-      loss_c = F.cross_entropy(batch_conf, conf_t_label, reduction='none')
+      loss_c = F.cross_entropy(batch_conf, conf_t_label.view(-1), reduction='none')
 
       num_pos = pos_mask.long().sum(1, keepdim=True)
       loss_c = loss_c.view(num_batch, -1)
