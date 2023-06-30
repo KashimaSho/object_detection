@@ -13,7 +13,7 @@ def make_vgg():
     (nn.ModuleList): vgg module list
   '''
   
-  vgg_layers = []
+  layers = []
   in_channels = 3
   
   #M, MCはプーリング層
@@ -26,14 +26,14 @@ def make_vgg():
   
   for v in cfg:
     if v == 'M':
-      vgg_layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
+      layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
     elif v == 'MC':
       #ceil_mode=Trueで出力される特徴量マップのサイズを切り上げる(37.5->38)
-      vgg_layers += [nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True)]
+      layers += [nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True)]
     else:
       conv2d = nn.Conv2d(in_channels=in_channels, out_channels=v, kernel_size=3, padding=1)
       #inplace=TrueにすることでReLUへの入力値を保持せずにメモリを節約する
-      vgg_layers += [conv2d, nn.ReLU(inplace=True)]
+      layers += [conv2d, nn.ReLU(inplace=True)]
       in_channels = v
   
   pool5 = nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
@@ -41,11 +41,11 @@ def make_vgg():
   conv6 = nn.Conv2d(in_channels=512, out_channels=1024, kernel_size=3, padding=6, dilation=6)
   conv7 = nn.Conv2d(in_channels=1024, out_channels=1024, kernel_size=1)
   
-  vgg_layers += [pool5, 
+  layers += [pool5, 
              conv6, nn.ReLU(inplace=True),
              conv7, nn.ReLU(inplace=True)]
   
-  return nn.ModuleList(vgg_layers)
+  return nn.ModuleList(layers)
 
 
 def make_extras():
@@ -54,7 +54,7 @@ def make_extras():
     (nn.ModuleList): extras module list
   '''
   
-  extras_layers = []
+  layers = []
   in_channels = 1024
   
   cfg = [256, 512, #extras1
@@ -64,22 +64,22 @@ def make_extras():
          ]
   
   #extras1
-  extras_layers += [nn.Conv2d(in_channels=in_channels, out_channels=cfg[0], kernel_size=1)]
-  extras_layers += [nn.Conv2d(in_channels=cfg[0], out_channels=cfg[1], kernel_size=3, stride=2, padding=1)]
+  layers += [nn.Conv2d(in_channels=in_channels, out_channels=cfg[0], kernel_size=(1))]
+  layers += [nn.Conv2d(in_channels=cfg[0], out_channels=cfg[1], kernel_size=(3), stride=2, padding=1)]
   
   #extras2
-  extras_layers += [nn.Conv2d(in_channels=cfg[1], out_channels=cfg[2], kernel_size=1)]
-  extras_layers += [nn.Conv2d(in_channels=cfg[2], out_channels=cfg[3], kernel_size=3, stride=2, padding=1)]
+  layers += [nn.Conv2d(in_channels=cfg[1], out_channels=cfg[2], kernel_size=(1))]
+  layers += [nn.Conv2d(in_channels=cfg[2], out_channels=cfg[3], kernel_size=(3), stride=2, padding=1)]
   
   #extras3
-  extras_layers += [nn.Conv2d(in_channels=cfg[3], out_channels=cfg[4], kernel_size=1)]
-  extras_layers += [nn.Conv2d(in_channels=cfg[4], out_channels=cfg[5], kernel_size=3)]
+  layers += [nn.Conv2d(in_channels=cfg[3], out_channels=cfg[4], kernel_size=(1))]
+  layers += [nn.Conv2d(in_channels=cfg[4], out_channels=cfg[5], kernel_size=(3))]
   
   #extras4
-  extras_layers += [nn.Conv2d(in_channels=cfg[5], out_channels=cfg[6], kernel_size=1)]
-  extras_layers += [nn.Conv2d(in_channels=cfg[6], out_channels=cfg[7], kernel_size=3)]
+  layers += [nn.Conv2d(in_channels=cfg[5], out_channels=cfg[6], kernel_size=(1))]
+  layers += [nn.Conv2d(in_channels=cfg[6], out_channels=cfg[7], kernel_size=(3))]
   
-  return nn.ModuleList(extras_layers)
+  return nn.ModuleList(layers)
 
 
 def make_loc(dbox_num=[4, 6, 6, 6, 4, 4]):
@@ -386,10 +386,7 @@ class Detect(Function):
         boxes = decoded_boxes[l_mask].view(-1, 4)
         
         ids, count = nonmaximum_suppress(boxes, scores, ctx.nms_thresh, ctx.top_k)
-        output[i, cl, :count] = torch.cat(
-          (scores[ids[:count]].unsqueeze(1), boxes[ids[:count]]),
-          1
-        )
+        output[i, cl, :count] = torch.cat((scores[ids[:count]].unsqueeze(1), boxes[ids[:count]]), 1)
     return output
     
     

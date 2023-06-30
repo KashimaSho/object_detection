@@ -51,7 +51,6 @@ class SSDPredictions():
     pre_dict_label_index = []
     scores = []
     detections = detections.cpu().detach().numpy()
-    
     find_index = np.where(detections[:, 0:, :, 0] >= confidence_threshold)
     detections = detections[find_index]
     
