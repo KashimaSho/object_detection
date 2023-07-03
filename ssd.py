@@ -319,8 +319,8 @@ def nonmaximum_suppress(boxes, scores, overlap=0.5, top_k=200):
     
     tmp_x1 = torch.clamp(tmp_x1, min=x1[i])
     tmp_y1 = torch.clamp(tmp_y1, min=y1[i])
-    tmp_x2 = torch.clamp(tmp_x2, min=x2[i])
-    tmp_y2 = torch.clamp(tmp_y2, min=y2[i])
+    tmp_x2 = torch.clamp(tmp_x2, max=x2[i])
+    tmp_y2 = torch.clamp(tmp_y2, max=y2[i])
     
     tmp_w.resize_as_(tmp_x2)
     tmp_h.resize_as_(tmp_y2)
