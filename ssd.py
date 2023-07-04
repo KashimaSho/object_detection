@@ -327,6 +327,9 @@ def nonmaximum_suppress(boxes, scores, overlap=0.5, top_k=200):
     tmp_w = tmp_x2 - tmp_x1
     tmp_h = tmp_y2 - tmp_y1
     
+    tmp_w = torch.clamp(tmp_w, min=0.0)
+    tmp_h = torch.clamp(tmp_h, min=0.0)
+    
     # calculate IoU
     inter = tmp_w * tmp_h
     rem_areas = torch.index_select(area, 0, idx)
